@@ -1,0 +1,8 @@
+body { font-family: sans-serif; margin: 0; padding: 0; color: #333; }
+header, nav { background: #2c3e50; color: #fff; padding: 1rem; }
+main { padding: 2rem; max-width: 1000px; margin: 0 auto; }
+table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+th { background-color: #f2f2f2; }
+.num { text-align: right; }
+.btn { background: #3498db; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 4px; }

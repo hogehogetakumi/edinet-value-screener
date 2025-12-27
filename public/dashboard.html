@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>候補一覧 | EDINET Screener</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav>
+        <span>EDINET Screener [Member]</span>
+        <span id="last-updated">更新日: -</span>
+    </nav>
+
+    <main class="dashboard">
+        <h2>今月のNCAV候補銘柄</h2>
+        <div class="toolbar">
+            <button onclick="downloadCSV()">CSVダウンロード</button>
+        </div>
+        
+        <table id="candidate-table">
+            <thead>
+                <tr>
+                    <th>企業名</th>
+                    <th>提出日</th>
+                    <th>NCAV (百万円)</th>
+                    <th>NCAV/株 (円)</th>
+                    <th>判定フラグ</th>
+                    <th>根拠</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- JSで描画 -->
+            </tbody>
+        </table>
+    </main>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
