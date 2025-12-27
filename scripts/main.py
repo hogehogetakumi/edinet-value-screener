@@ -12,11 +12,50 @@ import argparse
 import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
+import sys
 
 # プロジェクト内モジュール
 import config
 import database
 import processor
+
+def run_single_test(test_code: str, api_key: str, days_back: int):
+    """
+    単一のEDINETコードに対してテスト実行し、結果をコンソールに出力する
+    """
+    print(f"--- Running in Test Mode for EDINET Code: {test_code} ---")
+    
+    # --- 1. 企業マスタの読み込み ---
+    if not os.path.exists(config.EDINET_CODE_LIST_PATH):
+        print(f"!!! ERROR: EDINET code list not found at: {config.EDINET_CODE_LIST_PATH} !!!")
+        return
+    master_df = pd.read_csv(config.EDINET_CODE_LIST_PATH, encoding='cp932', skiprows=1, dtype=str).set_index('ＥＤＩＮＥＴコード')
+    
+    if test_code not in master_df.index:
+        print(f"!!! ERROR: EDINET code '{test_code}' not found in master list. !!!")
+        return
+
+    # --- 2. 日次インデックスの構築 ---
+    doc_index_df = processor.build_daily_index(api_key, days_back=days_back)
+    if doc_index_df.empty:
+        print("Could not build document index. Aborting.")
+        return
+        
+    # --- 3. データ抽出の実行 ---
+    print(f"Analyzing {test_code}...")
+    try:
+        data = processor.analyze_company_latest(test_code, api_key, master_df, doc_index_df)
+        
+        if data:
+            print("\n--- ✅ Extracted Data ---")
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+            print("--- ✅ End of Data ---")
+        else:
+            print(f"\n--- ❗️ No data could be extracted for {test_code}. ---")
+            print("This could be because no recent annual reports were found.")
+
+    except Exception as e:
+        print(f"!!! An error occurred during analysis for {test_code}: {e} !!!")
 
 def main():
     """メイン処理"""
@@ -25,13 +64,29 @@ def main():
                         help="Number of target list files to process in one run.")
     parser.add_argument("--days-back", type=int, default=config.DAYS_BACK,
                         help=f"Number of days back to build the document index (default: {config.DAYS_BACK})")
-    args = parser.parse_args()
+    # --- Test Mode Argument ---
+    parser.add_argument("--test-code", type=str, default=None,
+                        help="Run in test mode for a single EDINET code. Bypasses DB writes.")
+    parser.add_argument("--api-key", type=str, default=config.SUBSCRIPTION_KEY,
+                        help="EDINET API key. Overrides environment variable if provided.")
 
-    # --- 1. 初期設定・バリデーション ---
-    if not config.SUBSCRIPTION_KEY or config.SUBSCRIPTION_KEY == "YOUR_SUBSCRIPTION_KEY":
-        print("!!! ERROR: EDINET_API_KEY is not set. Please set it as an environment variable. !!!")
+    args = parser.parse_args()
+    
+    # --- APIキーのチェック ---
+    api_key_to_use = args.api_key
+    if not api_key_to_use or api_key_to_use == "YOUR_SUBSCRIPTION_KEY":
+        print("!!! ERROR: EDINET_API_KEY is not set. Please provide it via --api-key argument or environment variable. !!!")
         return
 
+    # --- Test Mode ---
+    if args.test_code:
+        run_single_test(args.test_code, api_key_to_use, args.days_back)
+        return
+
+    # --- Production (Batch) Mode ---
+    print("--- Running in Production (Batch) Mode ---")
+
+    # --- 1. 初期設定・バリデーション ---
     if not os.path.exists(config.EDINET_CODE_LIST_PATH):
         print(f"!!! ERROR: EDINET code list not found at: {config.EDINET_CODE_LIST_PATH} !!!")
         print("Please download 'EdinetcodeDlInfo.csv' from the EDINET website and place it in the project root.")
@@ -70,7 +125,7 @@ def main():
         return
 
     # --- 3. 日次インデックスの構築 ---
-    doc_index_df = processor.build_daily_index(config.SUBSCRIPTION_KEY, days_back=args.days_back)
+    doc_index_df = processor.build_daily_index(api_key_to_use, days_back=args.days_back)
     if doc_index_df.empty:
         print("Could not build document index. Aborting.")
         return
@@ -78,7 +133,7 @@ def main():
     # --- 4. 並列処理によるデータ抽出とDB保存 ---
     with ThreadPoolExecutor(max_workers=config.MAX_WORKERS) as executor:
         future_to_code = {
-            executor.submit(processor.analyze_company_latest, code, config.SUBSCRIPTION_KEY, master_df, doc_index_df): code
+            executor.submit(processor.analyze_company_latest, code, api_key_to_use, master_df, doc_index_df): code
             for code in unique_target_codes
         }
         
