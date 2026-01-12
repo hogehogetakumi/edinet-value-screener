@@ -142,6 +142,55 @@ def extract_financials(report: Dict[str, Any], api_key: str, consolidated_requir
     inv, inv_tag, inv_ctx = xbrl_parser._extract_single_fact(root, contexts, ns, config.BS_TAGS["inventory"], need_duration=False, period_end=period_end_str, consolidated_required=consolidated_required)
     ar, ar_tag, ar_ctx = xbrl_parser._extract_single_fact(root, contexts, ns, config.BS_TAGS["accountsReceivable"], need_duration=False, period_end=period_end_str, consolidated_required=consolidated_required)
 
+    # 株式数の取得（BS項目なので need_duration=False, 単位チェック無効）
+    total_shares, _, _ = xbrl_parser._extract_single_fact(
+        root, contexts, ns, 
+        config.SHARES_TAGS["total_shares"], 
+        need_duration=False,         # ← 重要: 株式数は「一時点(Instant)」のデータ
+        period_end=period_end_str, 
+        consolidated_required=False, # ※注記参照
+        check_unit=False             # ← 重要: 単位チェックをスキップ
+    )
+
+    # # 自己株式数の取得
+    # treasury_stock, _, _ = xbrl_parser._extract_single_fact(
+    #     root, contexts, ns, 
+    #     config.SHARES_TAGS["treasury_stock"], 
+    #     need_duration=False, 
+    #     period_end=period_end_str, 
+    #     consolidated_required=False,
+    #     check_unit=False             # ← 重要
+    # )
+
+    income, _, _ = xbrl_parser._extract_single_fact(
+        root, contexts, ns, 
+        config.NET_INCOME_TAGS["income_statement"],      # ← タグリストはもちろん変更する
+        need_duration=True,          # ← 【変更】PLは「期間」のデータなので True
+        period_end=period_end_str, 
+        consolidated_required=True,  # ← 【変更】親会社株主に帰属〜は「連結」概念なので True
+        check_unit=True              # ← 【変更】単位は「円」なので True (デフォルト)
+    )
+
+    cash_and_equiv, _, _ = xbrl_parser._extract_single_fact(
+        root, contexts, ns, 
+        config.CASH_TAGS,      # ← タグリストはもちろん変更する
+        need_duration=False,          # ← 【変更】B/Sは「一時点(Instant)」のデータなので False
+        period_end=period_end_str, 
+        consolidated_required=True,  # ← 【変更】親会社株主に帰属〜は「連結」概念なので True
+        check_unit=True              # ← 【変更】単位は「円」なので True (デフォルト)
+    )
+    print(f"  -> Extracted cash_and_equiv cash_and_equiv: {cash_and_equiv}.")
+
+
+
+    # Noneハンドリング
+    # if total_shares is None:
+    #     # 株式数が取れない＝計算不能。ログを出してスキップか、エラー処理
+    #     return None
+
+    # if treasury_stock is None:
+    #     treasury_stock = 0
+
     details.update({
         "revenue": rev, "revenueTag": rev_tag, "revenueCtx": rev_ctx,
         "operatingProfit": op, "operatingProfitTag": op_tag, "operatingProfitCtx": op_ctx,
@@ -153,6 +202,10 @@ def extract_financials(report: Dict[str, Any], api_key: str, consolidated_requir
         "inventory": inv, "inventoryTag": inv_tag, "inventoryCtx": inv_ctx,
         "accountsReceivable": ar, "accountsReceivableTag": ar_tag, "accountsReceivableCtx": ar_ctx,
         "operatingCashFlow": ocf, "operatingCashFlowTag": ocf_tag, "operatingCashFlowCtx": ocf_ctx,
+        "totalShares": total_shares,
+        # "treasuryStock": treasury_stock,
+        "netIncome": income,
+        "cashAndEquivalents": cash_and_equiv,
     })
     return details
 
@@ -206,6 +259,11 @@ def analyze_company_latest(code: str, api_key: str, master_df: pd.DataFrame, doc
         print(f"[{code}] Processing {label} docID: {report['docID']}")
         
         details = extract_financials(report, api_key, consolidated_required)
+        
+        if details is None:
+            # print(f"  -> Failed to extract financial details for docID {report.get('docID')}. Skipping this report.")
+            continue
+
         processed_details.append(details)
 
         # 1. Filings Data
@@ -242,6 +300,10 @@ def analyze_company_latest(code: str, api_key: str, master_df: pd.DataFrame, doc
             "accounts_receivable": details.get("accountsReceivable"),
             "unit_multiplier": 1, # Default to 1 (Yen) as per current parser logic
             "source_quality_flags": ",".join(quality_flags) if quality_flags else None,
+            "total_shares": details.get("totalShares"),
+            # "treasury_stock": details.get("treasuryStock"),
+            "net_income": details.get("netIncome"),
+            "cash_and_equivalents": details.get("cashAndEquivalents"),
             "extracted_at": datetime.now().isoformat()
         }
         result_container["financial_snapshots"].append(snapshot_rec)

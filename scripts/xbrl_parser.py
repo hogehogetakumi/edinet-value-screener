@@ -69,9 +69,13 @@ def _unit_is_jpy(root: etree._Element, unit_ref: str) -> bool:
     measures = u[0].xpath(".//xbrli:measure/text()", namespaces=ns)
     return any(str(m).lower().endswith(":jpy") or str(m).lower() == "jpy" for m in measures)
 
+def _context_in_current(root: etree._Element, context_refs: List[str]) -> bool:
+    """指定された"""
+
 def _extract_single_fact(root: etree._Element, contexts: Dict[str, Any], ns: Dict[str, str], 
                          tag_list: List[str], *, need_duration: bool,
-                         period_end: str, consolidated_required: bool) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+                         period_end: str, consolidated_required: bool,
+                         check_unit: bool = True) -> Tuple[Optional[int], Optional[str], Optional[str]]:
     """
     指定タグ群から、context/通貨/期間が合う最初の単一のファクト(数値)を抽出する
     """
@@ -79,6 +83,10 @@ def _extract_single_fact(root: etree._Element, contexts: Dict[str, Any], ns: Dic
     pe_str = pe.strftime("%Y-%m-%d") if pd.notna(pe) else None
     if not pe_str:
         return None, None, None
+
+    income_flag = False
+    if tag_list[0] == "ProfitLossAttributableToOwnersOfParent":
+        income_flag = True
 
     for tag in tag_list:
         # 名前空間を問わずローカル名で検索
@@ -92,7 +100,6 @@ def _extract_single_fact(root: etree._Element, contexts: Dict[str, Any], ns: Dic
                 continue
             
             ctx = contexts[ctx_id]
-
             # 期間タイプ(duration/instant)と期末日が一致するか
             if ctx["is_duration"] != need_duration:
                 continue
@@ -104,9 +111,15 @@ def _extract_single_fact(root: etree._Element, contexts: Dict[str, Any], ns: Dic
                 continue
 
             # 単位が日本円か
-            unit_ref = el.get("unitRef")
-            if not _unit_is_jpy(root, unit_ref):
-                continue
+            if check_unit:
+                unit_ref = el.get("unitRef")
+                if not _unit_is_jpy(root, unit_ref):
+                    continue
+            
+            if income_flag:
+                context_ref = el.get("contextRef")
+                print(f"  -> Found income fact with contextRef: {context_ref}")
+
             
             # 数値のパース試行
             try:

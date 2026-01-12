@@ -21,7 +21,7 @@ import processor
 def main():
     """メイン処理"""
     parser = argparse.ArgumentParser(description="Extract latest PL/BS from EDINET annual filings.")
-    parser.add_argument("--num-files", type=int, default=1,
+    parser.add_argument("--num-files", type=int, default=10,
                         help="Number of target list files to process in one run.")
     parser.add_argument("--days-back", type=int, default=config.DAYS_BACK,
                         help=f"Number of days back to build the document index (default: {config.DAYS_BACK})")

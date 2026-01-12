@@ -59,6 +59,9 @@ def init_database():
         unit_multiplier INTEGER,
         source_quality_flags TEXT,
         extracted_at TEXT NOT NULL,
+        total_shares REAL,
+        net_income REAL,
+        cash_and_equivalents REAL,
         FOREIGN KEY(doc_id) REFERENCES filings(doc_id)
     )
     ''')
