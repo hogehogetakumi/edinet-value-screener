@@ -21,10 +21,11 @@ import processor
 def main():
     """メイン処理"""
     parser = argparse.ArgumentParser(description="Extract latest PL/BS from EDINET annual filings.")
-    parser.add_argument("--num-files", type=int, default=10,
+    parser.add_argument("--num-files", type=int, default=1,
                         help="Number of target list files to process in one run.")
     parser.add_argument("--days-back", type=int, default=config.DAYS_BACK,
                         help=f"Number of days back to build the document index (default: {config.DAYS_BACK})")
+    parser.add_argument("--rebuild-db", action="store_true", help="Force deletion and recreation of the database file.")
     args = parser.parse_args()
 
     # --- 1. 初期設定・バリデーション ---
@@ -36,6 +37,14 @@ def main():
         print(f"!!! ERROR: EDINET code list not found at: {config.EDINET_CODE_LIST_PATH} !!!")
         print("Please download 'EdinetcodeDlInfo.csv' from the EDINET website and place it in the project root.")
         return
+        
+    # --- DBの強制再構築 ---
+    if args.rebuild_db:
+        if os.path.exists(config.DB_PATH):
+            print(f"--- Deleting existing database for rebuild: {config.DB_PATH} ---")
+            os.remove(config.DB_PATH)
+        else:
+            print("--- No existing database to delete. Proceeding with creation. ---")
         
     database.init_database()
 
@@ -101,7 +110,7 @@ def main():
                     # 4. Screening
                     database.upsert_record("company_screening", data["company_screening"], ["edinet_code"])
                     
-                    print(f"  -> Successfully processed and saved data for {code}.")
+                    # print(f"  -> Successfully processed and saved data for {code}.")
                 else:
                     print(f"  -> Skipped {code} (no new data or report).")
             except Exception as e:
@@ -123,6 +132,9 @@ def main():
         except Exception as e:
             print(f"Error moving file '{filename}': {e}")
     print(f"Moved {len(files_to_process)} processed files to 'done' directory.")
+    # --- 6. CSVエクスポート ---
+    output_csv = os.path.join(config.OUTPUT_DIR, "company_financials.csv")
+    database.export_company_financials_csv(output_csv)
     print("\nExtraction process finished.")
 
 if __name__ == '__main__':

@@ -37,99 +37,70 @@ except (ImportError, ModuleNotFoundError):
 # APIレートリミット設定 (EDINET API仕様: 500ms/req)
 MIN_INTERVAL_SEC = 0.6
 
-# --- XBRLタグ定義 (PL/BS 最新期のみ) ---
-
-# 損益計算書（PL）
-PL_TAGS = {
-    # 売上高（IFRS/日本基準の代表的バリエーション）
-    "revenue": [
-        "Revenue",
+# --- XBRLタグ定義 (Financial Items: Optimized) ---
+# 優先度順。上位のタグが見つかればそれを採用する。
+# IFRSと日本基準の両方に対応。
+FINANCIAL_ITEM_TAGS = {
+    # 1. 成長性: 売上高
+    "net_sales": [
+        "jpigp_cor:NetSalesIFRS",
+        "SalesAndFinancialServicesRevenueIFRS",
+        "jppfs_cor:NetSales",
         "NetSales",
-        "SalesRevenue",
-        "OperatingRevenue"
+        "OperatingRevenue1",
+        "Revenue",
+        "SalesRevenue"
     ],
-    # 営業利益
-    "operatingProfit": [
-        "ProfitLossFromOperatingActivities",
-        "OperatingIncome",
-        "OperatingProfit"
-    ]
-}
-
-# 貸借対照表（BS）
-BS_TAGS = {
-    "totalAssets":        ["TotalAssets", "Assets"],
-    "totalLiabilities":   ["TotalLiabilities", "Liabilities"],
-    # 純資産：IFRS/日本基準の双方をカバー
-    "equity":             ["Equity", "NetAssets", "EquityAttributableToOwnersOfParent"],
-    "currentAssets":      ["CurrentAssets", "AssetsCurrent"],
-    "currentLiabilities": ["CurrentLiabilities", "LiabilitiesCurrent"],
-    "inventory":          ["Inventories", "MerchandiseAndFinishedGoods", "InventoriesNet"],
-    "accountsReceivable": ["NotesAndAccountsReceivableTrade", "AccountsReceivableTrade", "NotesAndAccountsReceivableTradeAndContractAssets"]
-}
-
-# キャッシュ・フロー計算書（CF）
-CF_TAGS = {
-    "operatingCashFlow": [
+    # 2. 効率性: 棚卸資産 (在庫)
+    "inventories": [
+        # --- 合計タグ (優先的に使用) ---
+        "jpigp_cor:InventoriesCAIFRS", # IFRS 基準の棚卸資産
+        "jppfs_cor:Inventories",       # 日本基準の棚卸資産
+        "Inventories",                 # 一般的な棚卸資産 (合計)
+        "InventoriesNet",              # IFRS (合計)
+        # --- 内訳タグ (合計がない場合の計算用) ---
+        "MerchandiseAndFinishedGoods",
+        "Merchandise",
+        "FinishedGoods",
+        "WorkInProcess",
+        "SemiFinishedGoods",
+        "RawMaterialsAndSupplies",
+        "RawMaterials",
+        "Supplies"
+    ],
+    # 3. 収益性: 純利益
+    "net_income": [
+        "jpigp_cor:ProfitLossAttributableToOwnersOfParentIFRS",
+        "jpigp_cor:ProfitLossIFRS",
+        "jppfs_cor:ProfitLoss",
+        "jppfs_cor:NetIncome",
+        "ProfitLossAttributableToOwnersOfParent",
+        "NetIncome",
+        "ProfitLoss",
+        "NetIncomeLoss"
+    ],
+    # 4. 現金: 営業キャッシュフロー
+    "operating_cf": [
+        "jpigp_cor:NetCashProvidedByUsedInOperatingActivitiesIFRS",
+        "jppfs_cor:NetCashProvidedByUsedInOperatingActivities",
         "NetCashProvidedByUsedInOperatingActivities",
         "CashFlowsFromUsedInOperatingActivities"
-    ]
-}
-
-# config.py に以下を追加・統合せよ
-
-SHARES_TAGS = {
-    # 発行済株式総数
-    "total_shares": [
-        "TotalNumberIssuedSharesSummaryOfBusinessResults", # 経営指標（サマリ）
-        "TotalNumberOfIssuedSharesSummaryOfBusinessResults",
-        "TotalNumberIssuedShares",                         # 株式の状況
-        "CommonStockIssue",                                # IFRS/米国基準の一部
     ],
-    # 自己株式数（金庫株）
-    "treasury_stock": [
-        "TreasuryStockSummaryOfBusinessResults",           # 経営指標（サマリ）
-        "TreasuryStock",                                   # B/S上の自己株式
-        "TreasuryShares",                                  # IFRS
+    # --- 5. 安全性 (B/S項目) ---
+    "cash": [
+        "CashAndDeposits",
+        "CashAndCashEquivalents"
+    ],
+    "debt": [
+        "ShortTermLoansPayable",
+        "LongTermLoansPayable",
+        "CurrentPortionOfLongTermLoansPayable",
+        "BondsPayable",
+        "CurrentPortionOfBonds",
+        "CommercialPapersLiabilities"
+    ],
+    "net_assets": [
+        "NetAssets",
+        "Equity"
     ]
 }
-
-# config.py
-
-NET_INCOME_TAGS = {
-    "income_statement": [
-        # 優先順位1: 親会社の株主の取り分（連結の正解）
-        "ProfitLossAttributableToOwnersOfParent",  # J-GAAP
-        "ProfitLossAttributableToOwnersOfParentIFRS",
-        "ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults",
-        "ProfitAttributableToOwnersOfParent",      # IFRS
-
-        # 米国基準 (US-GAAP) - たまに日本企業でも使う
-        "NetIncomeLossAttributableToOwnersOfParent",
-        "NetIncomeLoss",
-        
-        # 優先順位2: 単なる当期純利益（単体決算や、上記が見つからない場合の妥協案）
-        "ProfitLoss",                              # J-GAAP/IFRS共通
-        "NetIncome",                               # 米国基準など
-    ]
-}
-
-# config.py
-
-CASH_TAGS = [
-    # --- 【最優先】 現金及び現金同等物 (Level 2: 真水) ---
-    # IFRS企業はBSにこれを計上する。
-    # 日本基準企業もCF計算書の「期末残高」としてこのタグを持つことが多い。
-    "CashAndDeposits",
-    "CashAndCashEquivalents",       
-    
-    # --- 【次点】 現金及び預金 (Level 1: ほぼ現金) ---
-    # 日本基準のBSで最も一般的なタグ。
-    # 上記が取れなければこれで妥協する。
-    "CashAndDeposits",
-    
-    # --- 【予備】 その他考えられるタグ ---
-    "Cash",                         # 米国基準や非常に古い形式
-    "CashAndCashEquivalentsAtCarryingValue", # 米国基準など
-    "CashAndCashEquivalentsIFRSSummaryOfBusinessResults"
-]
